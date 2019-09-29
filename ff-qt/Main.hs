@@ -1,5 +1,4 @@
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -12,7 +11,7 @@ where
 
 import Control.Concurrent (forkIO)
 import Data.Foldable (for_)
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import Data.Maybe (fromJust, isJust)
 import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import Data.Time (Day, toGregorian)
@@ -35,16 +34,14 @@ import FF.Types
     Track (track_externalId, track_provider, track_source, track_url),
     loadNote,
   )
-import Foreign (Ptr)
 import Foreign.C (CInt)
 import Foreign.Hoppy.Runtime (withScopedPtr)
-import Foreign.StablePtr (newStablePtr)
 import qualified Graphics.UI.Qtah.Core.QCoreApplication as QCoreApplication
+import Graphics.UI.Qtah.Widgets.QApplication (QApplication)
 import qualified Graphics.UI.Qtah.Widgets.QApplication as QApplication
 import Graphics.UI.Qtah.Widgets.QMainWindow (QMainWindow)
 import qualified Graphics.UI.Qtah.Widgets.QMainWindow as QMainWindow
 import qualified Graphics.UI.Qtah.Widgets.QWidget as QWidget
-import qualified Language.C.Inline.Cpp as Cpp
 import Paths_ff_qt (version)
 import RON.Storage.Backend (DocId (DocId))
 import qualified RON.Storage.FS as Storage
@@ -53,26 +50,17 @@ import RON.Storage.FS
     runStorage,
     subscribeForever,
   )
+import System.Environment (getArgs)
 
 data UI = UI {window :: QMainWindow}
 
 main :: IO ()
 main = do
-  let version' = encodeUtf8 . Text.pack $ showVersion version
   path <- getDataDirOrFail
   storage <- Storage.newHandle path
-  storagePtr <- newStablePtr storage
-  withApp $ \app -> do
+  withApp $ \_ -> do
+    setupApp
     ui@UI {window} <- setupUI
-    --   int argc = 0;
-    --   char argv0[] = "ff-qt";
-    --   char * argv[] = {argv0, NULL};
-
-    --   auto app = new QApplication(argc, argv);
-    --   app->setOrganizationDomain("ff.cblp.su");
-    --   app->setOrganizationName("ff");
-    --   app->setApplicationName("ff");
-    --   app->setApplicationVersion(QString::fromStdString($bs-cstr:version'));
     QWidget.show window
     -- load current data to the view, asynchronously
     _ <-
@@ -84,12 +72,22 @@ main = do
     -- run UI
     QCoreApplication.exec
 
+withApp :: (QApplication -> IO a) -> IO a
 withApp = withScopedPtr $ do
   args <- getArgs
   QApplication.new args
 
+setupApp :: IO ()
+setupApp = do
+  QCoreApplication.setOrganizationDomain "ff.cblp.su"
+  QCoreApplication.setOrganizationName "ff"
+  QCoreApplication.setApplicationName "ff"
+  QCoreApplication.setApplicationVersion $ showVersion version
+
+setupUI :: IO UI
 setupUI = do
-  pure UI {}
+  window <- QMainWindow.new
+  pure UI {window}
 
 getDataDirOrFail :: IO FilePath
 getDataDirOrFail = do
@@ -116,27 +114,11 @@ upsertTask mainWindow Entity {entityId = DocId nid, entityVal = note} = do
       (startYear, startMonth, startDay) = toGregorianC $ fromJust note_start
       (endYear, endMonth, endDay) = maybe (0, 0, 0) toGregorianC note_end
       isTracking = isJust note_track
-      provider = encodeUtf8 $ fromMaybe "" $ note_track >>= track_provider
-      source = encodeUtf8 $ fromMaybe "" $ note_track >>= track_source
-      externalId = encodeUtf8 $ fromMaybe "" $ note_track >>= track_externalId
-      url = encodeUtf8 $ fromMaybe "" $ note_track >>= track_url
-  -- [Cpp.block| void {
-  --   $(MainWindow * mainWindow)->upsertTask({
-  --     .id = $bs-cstr:nid',
-  --     .isActive = $(bool isActive),
-  --     .text = $bs-cstr:text,
-  --     .start = {$(int startYear), $(int startMonth), $(int startDay)},
-  --     .end   = {$(int   endYear), $(int   endMonth), $(int   endDay)},
-  --     .isTracking = $(bool isTracking),
-  --     .track = {
-  --       .provider   = $bs-cstr:provider,
-  --       .source     = $bs-cstr:source,
-  --       .externalId = $bs-cstr:externalId,
-  --       .url        = $bs-cstr:url,
-  --     },
-  --   });
-  -- } |]
-  _
+  -- provider = encodeUtf8 $ fromMaybe "" $ note_track >>= track_provider
+  -- source = encodeUtf8 $ fromMaybe "" $ note_track >>= track_source
+  -- externalId = encodeUtf8 $ fromMaybe "" $ note_track >>= track_externalId
+  -- url = encodeUtf8 $ fromMaybe "" $ note_track >>= track_url
+  undefined
 
 toGregorianC :: Day -> (CInt, CInt, CInt)
 toGregorianC day = (y, m, d)
