@@ -48,8 +48,10 @@ executable ff-qt
     build-depends:
         -- global
         containers,
+        hoppy-runtime,
         inline-c,
         inline-c-cpp,
+        qtah,
         template-haskell,
         text,
         time,
